@@ -69,11 +69,6 @@ class MotionPlanningProgram:
                 self.target_position
             )
         )
-        print(
-            self.tessellation_graph.vertices[
-                self.start_tessellation_vertex_name
-            ].aligned_set
-        )
 
         self.options = options
 
@@ -240,8 +235,9 @@ class MotionPlanningProgram:
                 flow_in = sum([self.edges[e].phi for e in v.edges_in])
                 self.prog.AddLinearConstraint(flow_in == 1)
             else:
-                if v.name == self.mp_name(self.start_tessellation_vertex_name):
-                    print("1")
+                # TODO: why was bothered by this??
+                # if v.name == self.mp_name(self.start_tessellation_vertex_name):
+                    # print("1")
                 flow_in = sum([self.edges[e].phi for e in v.edges_in])
                 flow_out = sum([self.edges[e].phi for e in v.edges_out])
                 self.prog.AddLinearConstraint(flow_in == flow_out)
@@ -335,11 +331,13 @@ class MotionPlanningProgram:
                     self.prog.AddL2NormCostUsingConicConstraint(
                         A, b, np.append(e.l_pos, e.r_pos)
                     )
-                if e.left.name == self.mp_name(self.start_tessellation_vertex_name):
+                
+                if e.left.name == self.mp_name(self.start_tessellation_vertex_name) and "tsp" not in e.right.name:
                     A = np.array([[1, 0], [0, 1]])
                     b = -self.start_position
                     self.prog.AddL2NormCostUsingConicConstraint(A, b, e.l_pos)
-                if e.right.name == self.mp_name(self.target_tessellation_vertex_name):
+                
+                if e.right.name == self.mp_name(self.target_tessellation_vertex_name) and "tsp" not in e.left.name:
                     A = np.array([[1, 0], [0, 1]])
                     b = -self.target_position
                     self.prog.AddL2NormCostUsingConicConstraint(A, b, e.r_pos)

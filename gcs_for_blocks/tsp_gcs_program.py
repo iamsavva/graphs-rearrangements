@@ -380,12 +380,20 @@ class GraphTSPGCSProgram:
         return v_path, e_path
     
     def extract_order(self):
-        v_path, e_path = self.get_the_path()
+        # v_path, e_path = self.get_the_path()
         # get tsp variable
-        tsp_vertices = [v for v in v_path if "tsp" in v.name and self.solution.GetSolution(v.order) % 2 ==1 ]
-        block_order = [v.block_index for v in tsp_vertices]
-        for v in tsp_vertices:
-            print(v.name, v.block_index, self.solution.GetSolution(v.v))
+        # tsp_vertices = [v for v in v_path if "tsp" in v.name and self.solution.GetSolution(v.order) % 2 ==1 ]
+        tsp_vertices = [v for v in self.vertices.values() if "tsp" in v.name and round(self.solution.GetSolution(v.order)) % 2 ==1 ]
+        # tsp_vertices = [v for v in self.vertices.values() if "tsp" in v.name ]
+
+        block_order = [[round(v.block_index), round(self.solution.GetSolution(v.order)) ] for v in tsp_vertices]
+        block_order.sort(key = lambda x: x[1])
+        block_order = [v[0] for v in block_order]
+
+        # block_order = [int(v.block_index) for v in tsp_vertices]
+        # for v in tsp_vertices:
+        #     print(v.name, v.block_index, self.solution.GetSolution(v.order))
+        return block_order
 
 
     def get_trajectory_for_drawing(self) -> T.Tuple[npt.NDArray, T.List[str]]:

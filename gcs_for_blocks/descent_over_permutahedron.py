@@ -15,12 +15,17 @@ from util import timeit, INFO, YAY, WARN, ERROR
 from vertex import Vertex, VertexTSPprogram, VertexAlignedSet, VertexTSP
 from edge import Edge, EdgeMotionPlanningProgam
 from graph_tsp_gcs import ProgramOptionsForGCSTSP
-from axis_aligned_set import AlignedSet, Box
+from axis_aligned_set import AlignedSet, Box, FREE
 from axis_aligned_set_tesselation import (
     AxisAlignedSetTessellation,
     make_a_test_with_objects_and_obstacles,
+    HALF_BLOCK_WIDTH,
 )
 from axis_aligned_graph import GraphOfAdjacentAlignedSets
+
+from tsp_gcs_program import GraphTSPGCSProgram
+
+from graph_tsp_gcs import GraphTSPGCS
 
 
 import pydrake.geometry.optimization as opt  # pylint: disable=import-error, no-name-in-module
@@ -65,8 +70,8 @@ class DescentOverPermutahedron:
         self.tessellation_graph = tessellation_graph
 
         self.num_objects = num_objects
-        self.start_object_locations = start_object_locations
-        self.target_object_locations = target_object_locations
+        self.start_object_locations = np.array(start_object_locations)
+        self.target_object_locations = np.array(target_object_locations)
         assert num_objects == len(self.start_object_locations)
         assert num_objects == len(self.target_object_locations)
 
@@ -100,7 +105,7 @@ class DescentOverPermutahedron:
         return True, [optimal_cost_of_1, optimal_cost_of_2]
 
 
-    def solve_from_local_solution(self, feasible_order: T.List[int]):
+    def solve_from_feasible_solution(self, feasible_order: T.List[int]):
         x = timeit()
         assert type(feasible_order) == list
         n = self.num_objects
@@ -108,10 +113,13 @@ class DescentOverPermutahedron:
 
         original_order_cost = 0
         cost_of_moving_object_i_at_current_order = [0] * n
+
+        # TODO: PARALLELIZE ME
         for i in range(n):
             solution = self.solve_for_path_from_to(current_order[i], current_order)
             assert solution.is_success(), "provided feasible order was not feasible for " + str(current_order[i]) + " at order " + str(i) 
             cost_of_moving_object_i_at_current_order[i] = solution.get_optimal_cost()
+        
         original_order_cost += sum(cost_of_moving_object_i_at_current_order)
         original_order_cost += self.arm_start_to_si[ current_order[0] ]
         for i in range(n-1):
@@ -128,6 +136,7 @@ class DescentOverPermutahedron:
         num_iterations = 0
         # continue while there are promising swaps
         while sum(promising_swaps) > 0:
+            print()
             num_iterations += 1
             improving_swaps = []
             
@@ -150,7 +159,6 @@ class DescentOverPermutahedron:
                     cost_delta += cost_of_moving_object_i_at_current_order[i]
                     cost_delta += cost_of_moving_object_i_at_current_order[i+1]
                     cost_delta -= (prog_costs[0] + prog_costs[1])
-                    # print(prog_costs)
 
                     # cost of moving from previous location to i
                     if i == 0:
@@ -172,7 +180,6 @@ class DescentOverPermutahedron:
                         cost_delta += self.ti_to_sj[ current_order[i+1], current_order[i+2]  ]
                         cost_delta -= self.ti_to_sj[ new_order[i+1], new_order[i+2]  ]
 
-                    print(cost_delta)
                     # if swap i is an improvement -- add it to the list of improving_swaps
                     if cost_delta > 0:
                         # improvement observed, yay!
@@ -233,8 +240,10 @@ class DescentOverPermutahedron:
 
         
     def solve_for_path_from_to(self, object_index: int, order:npt.NDArray):
+        prog = self.master_gcs_program.copy()
         self.num_gcs_solves += 1
-        self.master_gcs_program.ClearAllPhiConstraints()
+        
+        prog.ClearAllPhiConstraints()
         # don't allow going through the following objects
         offset = 0
         for i in range(self.num_objects):
@@ -366,23 +375,46 @@ class DescentOverPermutahedron:
         data.write_png(graph_name + ".png")
         data.write_svg(graph_name + ".svg")
         
-if __name__ == "__main__":
+
+def simple_small_test():
     tess, start_locs, target_locs = make_a_test_with_objects_and_obstacles()
     tess_graph = GraphOfAdjacentAlignedSets(tess)
     num_objects = 2
+    arm_start = np.array([1,7])
+    arm_target = np.array([3,3])
+    prog = DescentOverPermutahedron(num_objects, arm_start, arm_target, start_locs, target_locs, tess_graph)
+    prog.solve_from_feasible_solution( [1, 0] )
+
+if __name__ == "__main__":
+
+    lb, ub = 0,30
+
+    bounding_box = AlignedSet(a=ub, b = lb, l = lb, r = ub, set_type = FREE )
+    obstacle_sets = []
+
+    n = 10
+    np.random.seed(4)
+    start_object_locations = [tuple(np.random.uniform( lb+1, ub-1, 2)) for i in range(n)]
+    target_object_locations = [tuple(np.random.uniform( lb+1, ub-1, 2)) for i in range(n)]
+
+    start_arm_position = np.array([0,0])
+    target_arm_position = np.array([0,0])
+
+    program_options = ProgramOptionsForGCSTSP()
     
-    arm_start = np.array([0,0])
-    arm_target = np.array([7,7])
+    program_options.add_tsp_edge_costs = True
+    program_options.convex_relaxation_for_gcs_edges = True
 
-    prog = DescentOverPermutahedron(num_objects, arm_start, arm_target, np.array(start_locs), np.array(target_locs), tess_graph)
+    program_options.add_L2_norm_cost = False
+    program_options.solve_for_feasibility = True
 
-    prog.solve_from_local_solution( [1, 0] )
+    full_prog = GraphTSPGCSProgram.construct_from_positions(bounding_box, obstacle_sets, start_object_locations, target_object_locations, start_arm_position, target_arm_position, program_options)
+    full_prog.solve()
 
-    # solution = prog.solve_for_path_from_to(object_index=0, order = [1,0])
-    # print(solution.is_success(), solution.get_optimal_cost())
-
-
-    # tess_graph.plot_the_tessellation_graph()
-    # prog.display_graph(solution)
+    feasible_order = full_prog.extract_order()
+    print(feasible_order)
 
 
+    # descent_prog = DescentOverPermutahedron(n, start_arm_position, target_arm_position, start_object_locations, target_object_locations, full_prog.tessellation_graph)
+    # descent_prog.solve_from_feasible_solution(feasible_order)
+        

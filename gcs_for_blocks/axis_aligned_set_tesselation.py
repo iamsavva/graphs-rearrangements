@@ -255,7 +255,4 @@ if __name__ == "__main__":
 
     tess = make_swap_two_with_side_test()
 
-    for aligned_set in tess.tessellation_set:
-        print()
-
     tess.plot_the_tessellation()

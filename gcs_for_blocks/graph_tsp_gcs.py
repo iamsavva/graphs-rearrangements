@@ -23,8 +23,6 @@ class ProgramOptionsForGCSTSP:
         # self.objects_are_hard_constraints = True
         # self.objects_are_soft_constraints = not self.objects_are_hard_constraints
 
-        
-
 
 class GraphTSPGCS:
     def __init__(self):

@@ -205,7 +205,7 @@ class AlignedSet:
 
     def intersection(self, other: "AlignedSet"):
         """Intersection of two sets; cannot be just an edge (i.e., without interior)"""
-        assert self.intersects_with(other), "sets don't intersect"
+        assert self.intersects_with(other), "sets don't intersect:\n" + self.__repr__() + "\n" + other.__repr__()
         b, a = max(self.b, other.b), min(self.a, other.a)
         l, r = max(self.l, other.l), min(self.r, other.r)
         set_type = self.resolve_type(self.set_type, other.set_type)

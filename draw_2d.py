@@ -82,7 +82,6 @@ class Draw2DSolution:
         self.canvas = Canvas(
             top, width=self.width[0], height=self.width[1], background=BACKGROUND
         )
-        # print(self.width)
         self.canvas.pack()
         self.cells = {}
         self.environment = []
@@ -170,9 +169,6 @@ class Draw2DSolution:
     def draw_block(self, block_state, block_num):
         x, y = self.get_pixel_location(block_state)
         side = self.block_size / 2.0
-        # print(x)
-        # print(y)
-        # print(side)
         self.cells[(x, y)] = [
             self.canvas.create_rectangle(
                 x - side,
