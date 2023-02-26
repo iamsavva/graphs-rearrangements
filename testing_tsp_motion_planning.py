@@ -1,4 +1,4 @@
-from gcs_for_blocks.motion_planning_obstacles_on_off import MotionPlanning
+from gcs_for_blocks.motion_planning_program import MotionPlanning
 from gcs_for_blocks.axis_aligned_set_tesselation import (
     Box,
     AlignedSet,

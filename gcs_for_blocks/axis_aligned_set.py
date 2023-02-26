@@ -55,7 +55,7 @@ class AlignedSet:
         r: float,
         set_type: str,
         name: str = "",
-        objects: T.List[T.Tuple[str, int]] = [], # ("s/t/u/r", number)
+        objects: T.List[int] = [],
     ) -> None:
         # above bound a, y <= a
         # below bound b, b <= y

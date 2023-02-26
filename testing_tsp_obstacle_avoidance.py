@@ -8,7 +8,7 @@ from pydrake.math import le, eq  # pylint: disable=import-error, no-name-in-modu
 from gcs_for_blocks.tsp_vertex_edge import Vertex, Edge
 from gcs_for_blocks.util import timeit, INFO, WARN, ERROR, YAY
 from gcs_for_blocks.tsp_obstacle_avoidance import BlockMovingObstacleAvoidance
-from gcs_for_blocks.motion_planning_obstacles_on_off import MotionPlanning
+from gcs_for_blocks.motion_planning_program import MotionPlanning
 from gcs_for_blocks.axis_aligned_set_tesselation import (
     Box,
     AlignedSet,

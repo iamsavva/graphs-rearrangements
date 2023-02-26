@@ -2,26 +2,28 @@ import typing as T
 
 import numpy as np
 import numpy.typing as npt
-
 from pydrake.solvers import (  # pylint: disable=import-error, no-name-in-module
     MathematicalProgram,
     Solve,
 )
 from pydrake.math import le, eq  # pylint: disable=import-error, no-name-in-module
 
-from .util import timeit, INFO, WARN, ERROR, YAY  # INFO
-from .axis_aligned_set_tesselation import (
-    Box,
-    AlignedSet,
-    axis_aligned_tesselation,
-    locations_to_aligned_sets,
-    get_obstacle_to_set_mapping,
-)
-from .tsp_vertex_edge import Vertex, Edge
-from .motion_planning_obstacles_on_off import MotionPlanning
+# from graph import Vertex, Edge, Graph
+from axis_aligned_set import AlignedSet, Box
+from axis_aligned_set_tesselation import AxisAlignedSetTessellation
+
+# from graph import Vertex, Edge
+from vertex import VertexTSP, VertexTSPprogram
+from edge import EdgeTSP, EdgeTSPprogram
+from graph_tsp_gcs import ProgramOptionsForGCSTSP
+
+from util import timeit, INFO, WARN, ERROR, YAY  # INFO
 
 
-class BlockMovingObstacleAvoidance:
+from motion_planning_program import MotionPlanningProgram
+
+
+class GraphTSPGCSProgram:
     """
     Choosing the order in which to move the blocks is a TSP problem.
     Choosing a collision free motion plan once an object is grasped is a GCS shortest path problem.
@@ -30,43 +32,27 @@ class BlockMovingObstacleAvoidance:
 
     def __init__(
         self,
-        start_pos: T.List[T.Tuple[float]],
-        target_pos: T.List[T.Tuple[float]],
-        bounding_box: AlignedSet,
-        block_width: float = 1.0,
-        convex_relaxation: bool = False,
-        share_edge_tol: float = 0.000001,
+        tessellation_graph,
+        graph_vertices: T.Dict[str, VertexTSP],
+        graph_edges: T.Dict[str, EdgeTSP],
+        num_possible_objects: int,
+        program_options: ProgramOptionsForGCSTSP,
     ) -> None:
-        self.num_blocks = len(start_pos) - 1  # type: int
-        assert len(target_pos) == len(start_pos)
-        # all position vectors
-        self.start_pos = np.array(start_pos)
-        self.target_pos = np.array(target_pos)
-        self.start_arm_pos = np.array(start_pos[0])
-        self.target_arm_pos = np.array(target_pos[0])
-        self.start_block_pos = [np.array(x) for x in start_pos[1:]]
-        self.target_block_pos = [np.array(x) for x in target_pos[1:]]
-        # start and target vertecis
-        self.start = "sa_tsp"  # str
-        self.target = "ta_tsp"  # str
-        self.bounding_box = bounding_box  # type: AlignedSet
-        # make a tesselation
-        obstacles = locations_to_aligned_sets(
-            self.start_block_pos, self.target_block_pos, block_width, self.bounding_box
-        )
-        self.convex_set_tesselation = axis_aligned_tesselation(
-            bounding_box.copy(), obstacles
-        )
-        self.obstacle_to_set = get_obstacle_to_set_mapping(
-            self.start_block_pos, self.target_block_pos, self.convex_set_tesselation
-        )
-        self.share_edge_tol = share_edge_tol
-        # init the program
-        self.vertices = dict()  # type: T.Dict[str, Vertex]
-        self.edges = dict()  # type: T.Dict[str, Edge]
-        self.convex_relaxation = convex_relaxation
+
+        self.num_possible_objects = num_possible_objects
+
+        self.graph_vertices = graph_vertices
+        self.graph_edges = graph_edges
+
+        self.program_options = program_options
+
+        # program vertices
+        self.tessellation_graph = tessellation_graph
+        self.vertices = dict()  # type: T.Dict[str, VertexTSPprogram]
+        self.edges = dict()  # type: T.Dict[str, EdgeTSPprogram]
         self.prog = MathematicalProgram()
         self.solution = None
+
         # populate the program and vertex/edge dictionaries
         self.add_tsp_vertices_and_edges()
         self.add_tsp_variables_to_prog()
@@ -76,33 +62,23 @@ class BlockMovingObstacleAvoidance:
 
         INFO(str(len(self.vertices)), " vertices", str(len(self.edges)), " edges")
 
-    @property
-    def n(self) -> int:
-        """Number of vertices"""
-        return 2 * (self.num_blocks + 1)
+        self.num_tsp_vertices = 0
 
-    def s(self, name: str) -> str:
-        """Name a start-block vertex"""
-        return "s" + str(name) + "_tsp"
-
-    def t(self, name: str) -> str:
-        """Name a target-block vertex"""
-        return "t" + str(name) + "_tsp"
-
-    def add_vertex(self, name: str, value: npt.NDArray, block_index: int) -> None:
-        """Add vertex to the respective dictionary"""
-        assert name not in self.vertices, "Vertex with name " + name + " already exists"
-        self.vertices[name] = Vertex(name, value, block_index)
-
-    def add_edge(self, left_name: str, right_name: str) -> None:
-        """Add edge to the respective dictionary"""
-        edge_name = left_name + "_" + right_name
-        assert edge_name not in self.edges, "Edge " + edge_name + " already exists"
-        self.edges[edge_name] = Edge(
-            self.vertices[left_name], self.vertices[right_name], edge_name
+    def add_program_vertex(self, tsp_vertex: VertexTSP):
+        assert tsp_vertex.name not in self.vertices, (
+            "Vertex with name " + tsp_vertex.name + " already exists"
         )
-        self.vertices[left_name].add_edge_out(edge_name)
-        self.vertices[right_name].add_edge_in(edge_name)
+        self.vertices[tsp_vertex.name] = VertexTSPprogram.from_vertex_tsp(tsp_vertex)
+        self.num_tsp_vertices += 1
+
+    def add_program_tsp_edge(self, e: EdgeTSP):
+        edge_name = e.name
+        assert edge_name not in self.edges, "Edge " + edge_name + " already exists"
+        self.edges[edge_name] = EdgeTSPprogram(
+            self.vertices[e.left], self.vertices[e.right], edge_name
+        )
+        self.vertices[e.left].add_edge_out(edge_name)
+        self.vertices[e.right].add_edge_in(edge_name)
 
     def add_tsp_vertices_and_edges(self) -> None:
         """
@@ -117,30 +93,11 @@ class BlockMovingObstacleAvoidance:
         ################################
         # add all vertices
         ################################
-        # add start/target arm vertices
-        self.add_vertex(self.start, self.start_arm_pos, -1)
-        self.add_vertex(self.target, self.target_arm_pos, -1)
-        # add start/target block vertices
-        for i, pos in enumerate(self.start_block_pos):
-            self.add_vertex(self.s(i), pos, i)
-        for i, pos in enumerate(self.target_block_pos):
-            self.add_vertex(self.t(i), pos, i)
+        for graph_vertex in self.graph_vertices:
+            self.add_program_vertex(graph_vertex)
 
-        ################################
-        # add all edges
-        ################################
-        # add edge to from initial arm location to final arm location
-        self.add_edge(self.s("a"), self.t("a"))
-        for j in range(self.num_blocks):
-            # from start to any
-            self.add_edge(self.s("a"), self.s(j))
-            # from any to target
-            self.add_edge(self.t(j), self.t("a"))
-            # from any to target to any start
-            for i in range(self.num_blocks):
-                if i != j:
-                    self.add_edge(self.t(j), self.s(i))
-            # from start block to target block is motion planning!
+        for tsp_edge in self.graph_edges:
+            self.add_program_tsp_edge(tsp_edge)
 
     def add_tsp_variables_to_prog(self) -> None:
         """
@@ -154,7 +111,11 @@ class BlockMovingObstacleAvoidance:
         #   visitation order variable order: number of tsp vertices visited so far
         for v in self.vertices.values():
             # visitation variable
-            v.set_v(self.prog.NewContinuousVariables(self.num_blocks, "v_" + v.name))
+            v.set_v(
+                self.prog.NewContinuousVariables(
+                    self.num_possible_objects, "v_" + v.name
+                )
+            )
             v.set_order(self.prog.NewContinuousVariables(1, "order_" + v.name)[0])
 
         ############################
@@ -165,10 +126,14 @@ class BlockMovingObstacleAvoidance:
         for e in self.edges.values():
             # left and right visitation
             e.set_left_v(
-                self.prog.NewContinuousVariables(self.num_blocks, "left_v_" + e.name)
+                self.prog.NewContinuousVariables(
+                    self.num_possible_objects, "left_v_" + e.name
+                )
             )
             e.set_right_v(
-                self.prog.NewContinuousVariables(self.num_blocks, "right_v_" + e.name)
+                self.prog.NewContinuousVariables(
+                    self.num_possible_objects, "right_v_" + e.name
+                )
             )
             # left and right order
             e.set_left_order(
@@ -177,12 +142,7 @@ class BlockMovingObstacleAvoidance:
             e.set_right_order(
                 self.prog.NewContinuousVariables(1, "right_order" + e.name)[0]
             )
-
             # add flow variable
-            # if self.convex_relaxation:
-            #     e.set_phi(self.prog.NewContinuousVariables(1, "phi_" + e.name)[0])
-            #     self.prog.AddLinearConstraint(e.phi, 0.0, 1.0)
-            # else:
             e.set_phi(self.prog.NewBinaryVariables(1, "phi_" + e.name)[0])
 
     def add_tsp_constraints_to_prog(self) -> None:
@@ -202,9 +162,9 @@ class BlockMovingObstacleAvoidance:
         # order and visit convex sets
         order_box = Box(lb=np.array([0]), ub=np.array([self.n - 1]), state_dim=1)
         visitation_box = Box(
-            lb=np.zeros(self.num_blocks),
-            ub=np.ones(self.num_blocks),
-            state_dim=self.num_blocks,
+            lb=np.zeros(self.num_possible_objects),
+            ub=np.ones(self.num_possible_objects),
+            state_dim=self.num_possible_objects,
         )
         ############################
         # add edge constraints:
@@ -212,11 +172,11 @@ class BlockMovingObstacleAvoidance:
         #   perspective set inclusion on (flow, visit)
         for e in self.edges.values():
             # perspective constraints on order
-            A, b = order_box.get_perspective_hpolyhedron()
+            A, b = order_box.get_perspective_hpolyhedron_matrices()
             self.prog.AddLinearConstraint(le(A @ np.array([e.left_order, e.phi]), b))
             self.prog.AddLinearConstraint(le(A @ np.array([e.right_order, e.phi]), b))
             # perspective constraints on visits
-            A, b = visitation_box.get_perspective_hpolyhedron()
+            A, b = visitation_box.get_perspective_hpolyhedron_matrices()
             self.prog.AddLinearConstraint(le(A @ np.append(e.left_v, e.phi), b))
             self.prog.AddLinearConstraint(le(A @ np.append(e.right_v, e.phi), b))
             # increasing order
@@ -240,7 +200,7 @@ class BlockMovingObstacleAvoidance:
             order_out = sum([self.edges[e].left_order for e in v.edges_out])
             v_in = sum([self.edges[e].right_v for e in v.edges_in])
             v_out = sum([self.edges[e].left_v for e in v.edges_out])
-            if v.name == self.start:
+            if v.name == "start":
                 # it's the start vertex; initial conditions
                 # flow out is 1
                 self.prog.AddLinearConstraint(flow_out == 1)
@@ -249,10 +209,12 @@ class BlockMovingObstacleAvoidance:
                 # order continuity: order_out is 0
                 self.prog.AddLinearConstraint(v.order == order_out)
                 # 0 visits have been made yet
-                self.prog.AddLinearConstraint(eq(v.v, np.zeros(self.num_blocks)))
+                self.prog.AddLinearConstraint(
+                    eq(v.v, np.zeros(self.num_possible_objects))
+                )
                 # visit continuity
                 self.prog.AddLinearConstraint(eq(v.v, v_out))
-            elif v.name == self.target:
+            elif v.name == "target":
                 # it's the target vertex; final conditions
                 # flow in is 1
                 self.prog.AddLinearConstraint(flow_in == 1)
@@ -261,7 +223,9 @@ class BlockMovingObstacleAvoidance:
                 # order continuity: order in is n-1
                 self.prog.AddLinearConstraint(v.order == order_in)
                 # all blocks have been visited
-                self.prog.AddLinearConstraint(eq(v.v, np.ones(self.num_blocks)))
+                self.prog.AddLinearConstraint(
+                    eq(v.v, np.ones(self.num_possible_objects))
+                )
                 # visit continuity: v me is v in
                 self.prog.AddLinearConstraint(eq(v.v, v_in))
             elif v.name[0] == "s":
@@ -275,10 +239,10 @@ class BlockMovingObstacleAvoidance:
                 # vertex visit is sum of visits in
                 self.prog.AddLinearConstraint(eq(v.v, v_in))
                 # order belongs to a set (TODO: redundant?)
-                A, b = order_box.get_hpolyhedron()
+                A, b = order_box.get_hpolyhedron_matrices()
                 self.prog.AddLinearConstraint(le(A @ np.array([v.order]), b))
                 # visitations belong to a set (TODO: redundant?)
-                A, b = visitation_box.get_hpolyhedron()
+                A, b = visitation_box.get_hpolyhedron_matrices()
                 self.prog.AddLinearConstraint(le(A @ v.v, b))
             elif v.name[0] == "t":
                 # it's a target block vertex
@@ -291,10 +255,10 @@ class BlockMovingObstacleAvoidance:
                 # vertex visit is sum of visits out
                 self.prog.AddLinearConstraint(eq(v.v, v_out))
                 # order belongs to a set (TODO: redundant?)
-                A, b = order_box.get_hpolyhedron()
+                A, b = order_box.get_hpolyhedron_matrices()
                 self.prog.AddLinearConstraint(le(A @ np.array([v.order]), b))
                 # visitations belong to a set (TODO: redundant?)
-                A, b = visitation_box.get_hpolyhedron()
+                A, b = visitation_box.get_hpolyhedron_matrices()
                 self.prog.AddLinearConstraint(le(A @ v.v, b))
 
                 # order / visitation continuity over motion planning
@@ -303,7 +267,7 @@ class BlockMovingObstacleAvoidance:
                 assert sv.block_index == v.block_index, "block indeces do not match"
                 self.prog.AddLinearConstraint(sv.order + 1 == v.order)
                 # visitations hold except for the block i at which we are in
-                for i in range(self.num_blocks):
+                for i in range(self.num_possible_objects):
                     if i == v.block_index:
                         self.prog.AddLinearConstraint(sv.v[i] + 1 == v.v[i])
                     else:
@@ -314,25 +278,24 @@ class BlockMovingObstacleAvoidance:
         TSP costs are constants: pay a fixed price for going from target of last to start of next.
         """
         for e in self.edges.values():
-            e.cost = np.linalg.norm(e.right.value - e.left.value)
+            e.set_cost(np.linalg.norm(e.right.block_position - e.left.block_position))
         self.prog.AddLinearCost(sum([e.phi * e.cost for e in self.edges.values()]))
 
+    # TODO
+    # this should be called "add gcs edge"
     def add_motion_planning(self) -> None:
         """
         Adding motion planning edges, vertices, constraints, costs for each "motion planning edge".
         """
-        for block_index in range(self.num_blocks):
-            MotionPlanning(
+        for gcs_edge in self.gcs_edges:
+            MotionPlanningProgram(
                 prog=self.prog,
-                all_vertices=self.vertices,
-                all_edges=self.edges,
-                start_block_pos=self.start_block_pos,
-                target_block_pos=self.target_block_pos,
-                convex_set_tesselation=self.convex_set_tesselation,
-                obstacle_to_set=self.obstacle_to_set,
-                moving_block_index=block_index,
-                convex_relaxation=self.convex_relaxation,
-                share_edge_tol=self.share_edge_tol,
+                vertices=self.vertices,
+                edges=self.edges,
+                start_vertex=None,
+                target_vertex=None,
+                tessellation_graph=self.tessellation_graph,  # already a graph?
+                options=self.program_options,
             )
 
     def solve(self):
@@ -367,7 +330,7 @@ class BlockMovingObstacleAvoidance:
         #         print(e.name, flow)
 
         v_path, e_path = self.find_path_to_target(
-            non_zero_edges, self.vertices[self.start]
+            non_zero_edges, self.vertices["start"]
         )
         now_pose = self.start_pos.copy()
 
@@ -383,7 +346,7 @@ class BlockMovingObstacleAvoidance:
         flow_vars = [(e, self.solution.GetSolution(e.phi)) for e in self.edges.values()]
         non_zero_edges = [e for (e, flow) in flow_vars if flow > 0.01]
         v_path, e_path = self.find_path_to_target(
-            non_zero_edges, self.vertices[self.start]
+            non_zero_edges, self.vertices["start"]
         )
         now_pose = self.start_pos.copy()
         poses, modes = [], []
@@ -407,8 +370,8 @@ class BlockMovingObstacleAvoidance:
         return np.array(poses), modes
 
     def find_path_to_target(
-        self, edges: T.List[Edge], start: Vertex
-    ) -> T.Tuple[T.List[Vertex], T.List[Edge]]:
+        self, edges: T.List[EdgeTSPprogram], start: VertexTSPprogram
+    ) -> T.Tuple[T.List[VertexTSPprogram], T.List[EdgeTSPprogram]]:
         """Given a set of active edges, find a path from start to target recursively"""
         edges_out = [e for e in edges if e.left == start]
         assert (
@@ -417,7 +380,7 @@ class BlockMovingObstacleAvoidance:
         current_edge = edges_out[0]
         v = current_edge.right
         # if target reached - return, else -- recursion
-        target_reached = v.name == self.target
+        target_reached = v.name == "target"
         if target_reached:
             return [start] + [v], [current_edge]
         else:
