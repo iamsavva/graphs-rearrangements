@@ -5,16 +5,20 @@ import numpy.typing as npt
 
 from pydrake.solvers import (
     MathematicalProgram,
-    Solve
+    Solve,
 )  # pylint: disable=import-error, no-name-in-module
 from pydrake.math import le, eq  # pylint: disable=import-error, no-name-in-module
 
+from util import timeit
 
 from vertex import Vertex, VertexTSPprogram, VertexAlignedSet, VertexTSP
 from edge import Edge, EdgeMotionPlanningProgam
 from graph_tsp_gcs import ProgramOptionsForGCSTSP
 from axis_aligned_set import AlignedSet, Box
-from axis_aligned_set_tesselation import AxisAlignedSetTessellation, make_a_test_with_objects_and_obstacles
+from axis_aligned_set_tesselation import (
+    AxisAlignedSetTessellation,
+    make_a_test_with_objects_and_obstacles,
+)
 from axis_aligned_graph import GraphOfAdjacentAlignedSets
 
 
@@ -53,9 +57,8 @@ class MotionPlanningProgram:
         self.target_tsp_vertex_name = target_vertex.name
 
         self.start_position = start_vertex.block_position
-        self.target_position = target_vertex.block_position 
+        self.target_position = target_vertex.block_position
 
-        
         self.start_tessellation_vertex_name = (
             self.tessellation_graph.find_graph_vertex_that_has_point(
                 self.start_position
@@ -66,7 +69,11 @@ class MotionPlanningProgram:
                 self.target_position
             )
         )
-        print( self.tessellation_graph.vertices[self.start_tessellation_vertex_name].aligned_set )
+        print(
+            self.tessellation_graph.vertices[
+                self.start_tessellation_vertex_name
+            ].aligned_set
+        )
 
         self.options = options
 
@@ -201,17 +208,35 @@ class MotionPlanningProgram:
             # pos_out = pos_in constraints
             if not self.options.solve_for_feasibility:
                 # it's a start node
-                if v.name not in (self.start_tsp_vertex_name, self.target_tsp_vertex_name, self.mp_name(self.target_tessellation_vertex_name), self.mp_name(self.start_tessellation_vertex_name)):
-                    pos_out = sum([self.edges[e].l_pos for e in v.edges_out if self.edges[e].l_pos is not None])
-                    pos_in = sum([self.edges[e].r_pos for e in v.edges_in if self.edges[e].r_pos is not None])
+                if v.name not in (
+                    self.start_tsp_vertex_name,
+                    self.target_tsp_vertex_name,
+                    self.mp_name(self.target_tessellation_vertex_name),
+                    self.mp_name(self.start_tessellation_vertex_name),
+                ):
+                    pos_out = sum(
+                        [
+                            self.edges[e].l_pos
+                            for e in v.edges_out
+                            if self.edges[e].l_pos is not None
+                        ]
+                    )
+                    pos_in = sum(
+                        [
+                            self.edges[e].r_pos
+                            for e in v.edges_in
+                            if self.edges[e].r_pos is not None
+                        ]
+                    )
                     self.prog.AddLinearConstraint(eq(pos_out, pos_in))
 
             ##############################
             # flow in = flow_out constraints
-            if v.name == self.start_tsp_vertex_name:  # TODO: unnecessary?
+            # NOTE: these constraints are neceesary here as MP edges are added after TSP edges
+            if v.name == self.start_tsp_vertex_name:
                 flow_out = sum([self.edges[e].phi for e in v.edges_out])
                 self.prog.AddLinearConstraint(flow_out == 1)
-            elif v.name == self.target_tsp_vertex_name:  # TODO: unnecessary?
+            elif v.name == self.target_tsp_vertex_name:
                 flow_in = sum([self.edges[e].phi for e in v.edges_in])
                 self.prog.AddLinearConstraint(flow_in == 1)
             else:
@@ -220,8 +245,9 @@ class MotionPlanningProgram:
                 flow_in = sum([self.edges[e].phi for e in v.edges_in])
                 flow_out = sum([self.edges[e].phi for e in v.edges_out])
                 self.prog.AddLinearConstraint(flow_in == flow_out)
-                self.prog.AddLinearConstraint(flow_in <= 1)  # TODO: unnecessary?
-                self.prog.AddLinearConstraint(flow_out <= 1)  # TODO: unnecessary?
+                # NOTE: having all variables be bounded makes optimization faster
+                self.prog.AddLinearConstraint(flow_in <= 1)
+                self.prog.AddLinearConstraint(flow_out <= 1)
 
         ###################################
         # PER EDGE
@@ -276,7 +302,7 @@ class MotionPlanningProgram:
                         ]
                     )
                     A = np.array([[-1, 0], [0, -1], [1, 1]])
-                    b = np.array([0, 0, 1]) # TODO: may be the other one
+                    b = np.array([0, 0, 1])  # TODO: may be the other one
                     # if obst_type == "s":
                     #     A = np.array([[1, 0], [0, -1], [-1, 1]])
                     #     b = np.array([1, 0, 0])
@@ -312,19 +338,22 @@ class MotionPlanningProgram:
                 if e.left.name == self.mp_name(self.start_tessellation_vertex_name):
                     A = np.array([[1, 0], [0, 1]])
                     b = -self.start_position
-                    self.prog.AddL2NormCostUsingConicConstraint( A, b, e.l_pos)
+                    self.prog.AddL2NormCostUsingConicConstraint(A, b, e.l_pos)
                 if e.right.name == self.mp_name(self.target_tessellation_vertex_name):
                     A = np.array([[1, 0], [0, 1]])
                     b = -self.target_position
-                    self.prog.AddL2NormCostUsingConicConstraint( A, b, e.r_pos)
-
+                    self.prog.AddL2NormCostUsingConicConstraint(A, b, e.r_pos)
 
 
 def test():
-    tessellation, object_start_locs, object_target_locs = make_a_test_with_objects_and_obstacles()
+    (
+        tessellation,
+        object_start_locs,
+        object_target_locs,
+    ) = make_a_test_with_objects_and_obstacles()
     tessellation_graph = GraphOfAdjacentAlignedSets(tessellation)
     num_possible_objects = 4
-    
+
     prog = MathematicalProgram()
     vertices = dict()
     edges = dict()
@@ -334,7 +363,7 @@ def test():
 
     # make vertices
     start_vertex = VertexTSPprogram("start_1_tsp", np.array(object_start_locs[0]), 0)
-    start_vertex.set_v(np.array([1,1,0,0]))
+    start_vertex.set_v(np.array([1, 1, 0, 0]))
 
     target_vertex = VertexTSPprogram("target_1_tsp", np.array(object_target_locs[0]), 2)
 
@@ -347,23 +376,26 @@ def test():
 
     # set up the solve options
     options = ProgramOptionsForGCSTSP()
-    options.add_L2_norm_cost = True
+    options.add_L2_norm_cost = False
     options.convex_relaxation_for_gcs_edges = True
-    options.solve_for_feasibility = False
+    options.solve_for_feasibility = True
 
     # populate the program with motion planning stuff
-    MotionPlanningProgram(prog, vertices, edges, start_vertex, target_vertex, tessellation_graph, options)
+    MotionPlanningProgram(
+        prog, vertices, edges, start_vertex, target_vertex, tessellation_graph, options
+    )
 
+    x = timeit()
     solution = Solve(prog)
+    x.dt()
     infeasible_constraints = solution.GetInfeasibleConstraints(prog)
     for infeas in infeasible_constraints:
         print(infeas)
-    
+
     print(solution.is_success())
     print(solution.get_optimal_cost())
 
     flows = [edge.name for edge in edges.values() if solution.GetSolution(edge.phi) > 0]
-    print(flows)
 
     # for edge in edges.values():
     #     print(edge.name, solution.GetSolution(edge.phi))
@@ -373,8 +405,3 @@ def test():
 
 if __name__ == "__main__":
     test()
-    
-
-
-
-    

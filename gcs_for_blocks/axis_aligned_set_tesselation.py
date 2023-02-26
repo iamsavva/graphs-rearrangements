@@ -29,7 +29,7 @@ class AxisAlignedSetTessellation:
         self.bounding_box = bounding_box.copy()
 
         # aligned tessellation is specified for an object width
-        self.width = object_width - SMALL_TOL  
+        self.width = object_width - SMALL_TOL
         self.half_width = object_width / 2.0 - SMALL_TOL
 
         # offset the bounding box inwards by (half width - small delta)
@@ -151,22 +151,24 @@ class AxisAlignedSetTessellation:
             plt.show()
         return ax
 
+
 # helper functions for making aligned sets
 
 
-def loc_aligned_set(x, y, index, half_width=HALF_BLOCK_WIDTH):
+def loc_aligned_set(x:float, y:float, index:int, half_width:float=HALF_BLOCK_WIDTH):
     # reduce block width by a delta
     w = half_width
     return AlignedSet(
         l=x - w, r=x + w, b=y - w, a=y + w, set_type=POSSIBLE_OBJECT, objects=[index]
     )
 
-def obstacle_loc_aligned_set(x, y, half_width=HALF_BLOCK_WIDTH):
+
+def obstacle_loc_aligned_set(x:float, y:float, half_width:float=HALF_BLOCK_WIDTH):
     w = half_width
     return AlignedSet(l=x - w, r=x + w, b=y - w, a=y + w, set_type=OBSTACLE)
 
 
-def obstacle_aligned_set(l, r, b, a):
+def obstacle_aligned_set(l:float, r:float, b:float, a:float):
     return AlignedSet(l=l, r=r, b=b, a=a, set_type=OBSTACLE)
 
 
@@ -221,20 +223,32 @@ def make_a_test_with_objects_and_obstacles():
     # we expect at least 4 sets
     bounding_box = AlignedSet(b=0, a=8, l=0, r=8, set_type=FREE)
 
-    object_start_locs =  [(1,7), (1,1)]
-    object_target_locs = [(7,1), (7,7)]
+    object_start_locs = [(1, 7), (1, 1)]
+    object_target_locs = [(7, 1), (7, 7)]
 
     object_sets = []
-    object_sets.append(loc_aligned_set(object_start_locs[0][0], object_start_locs[0][1], index=0))
-    object_sets.append(loc_aligned_set(object_start_locs[1][0], object_start_locs[1][1], index=1))
+    object_sets.append(
+        loc_aligned_set(object_start_locs[0][0], object_start_locs[0][1], index=0)
+    )
+    object_sets.append(
+        loc_aligned_set(object_start_locs[1][0], object_start_locs[1][1], index=1)
+    )
 
-    object_sets.append(loc_aligned_set(object_target_locs[0][0], object_target_locs[0][1], index=2))
-    object_sets.append(loc_aligned_set(object_target_locs[1][0], object_target_locs[1][1], index=3))
+    object_sets.append(
+        loc_aligned_set(object_target_locs[0][0], object_target_locs[0][1], index=2)
+    )
+    object_sets.append(
+        loc_aligned_set(object_target_locs[1][0], object_target_locs[1][1], index=3)
+    )
 
     obstacle_sets = []
     obstacle_sets.append(obstacle_aligned_set(0, 3, 4, 6))  # l r b a
     obstacle_sets.append(obstacle_aligned_set(5, 8, 2, 4))  # l r b a
-    return AxisAlignedSetTessellation(bounding_box, obstacle_sets, object_sets), object_start_locs, object_target_locs
+    return (
+        AxisAlignedSetTessellation(bounding_box, obstacle_sets, object_sets),
+        object_start_locs,
+        object_target_locs,
+    )
 
 
 if __name__ == "__main__":

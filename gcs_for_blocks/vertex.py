@@ -4,8 +4,10 @@ import numpy.typing as npt
 
 from axis_aligned_set import AlignedSet
 
+
 class Vertex:
     """A simple parent vertex class"""
+
     def __init__(self, name: str) -> None:
         # name of the vertex
         self.name = name  # type: str
@@ -22,8 +24,10 @@ class Vertex:
         assert nbh not in self.edges_out
         self.edges_out.append(nbh)
 
+
 class VertexAlignedSet(Vertex):
     """A vertex that also contains a convex set"""
+
     def __init__(self, name: str, aligned_set: AlignedSet) -> None:
         super().__init__(name)
         # aligned_set
@@ -40,7 +44,7 @@ class VertexAlignedSet(Vertex):
 
     def get_perspective_hpolyhedron_matrices(self) -> T.Tuple[npt.NDArray, npt.NDArray]:
         return self.aligned_set.get_perspective_hpolyhedron_matrices()
-    
+
 
 class VertexTSP(Vertex):
     def __init__(

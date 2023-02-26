@@ -3,6 +3,7 @@ import numpy.typing as npt
 
 from vertex import Vertex, VertexAlignedSet, VertexTSP, VertexTSPprogram
 
+
 class Edge:
     """A simple parent Edge class"""
 
@@ -10,6 +11,15 @@ class Edge:
         # TODO: should left / right be strings -- a name?
         self.left = left_vertex  # type: Vertex
         self.right = right_vertex  # type: Vertex
+        self.name = name  # type: str
+
+
+class EdgeGCS(Edge):
+    def __init__(
+        self, left_vertex: VertexTSP, right_vertex: VertexTSP, name: str
+    ) -> None:
+        self.left = left_vertex  # type: VertexTSP
+        self.right = right_vertex  # type: VertexTSP
         self.name = name  # type: str
 
 
@@ -42,23 +52,14 @@ class EdgeTSP(Edge):
     """A simple parent Edge class"""
 
     def __init__(
-        self,
-        left_vertex: VertexTSP,
-        right_vertex: VertexTSP,
-        name: str,
-        cost: float = None,
+        self, left_vertex: VertexTSP, right_vertex: VertexTSP, name: str
     ) -> None:
-        self.left = left_vertex  # type: Vertex
-        self.right = right_vertex  # type: Vertex
+        self.left = left_vertex  # type: VertexTSP
+        self.right = right_vertex  # type: VertexTSP
         self.name = name  # type: str
 
-        self.cost = cost  # type: float
 
-    def set_cost(self, cost: float) -> None:
-        assert self.cost is None, "cost being set again"
-        self.cost = cost
-
-class EdgeTSPprogram(EdgeTSP):
+class EdgeTSPprogram(Edge):
     def __init__(
         self,
         left_vertex: VertexTSPprogram,
@@ -82,21 +83,21 @@ class EdgeTSPprogram(EdgeTSP):
         self.cost = cost
 
     def set_phi(self, flow):
-        assert self.phi == 0, "Flow for " + self.name + " is already set"
+        assert self.phi is None, "Flow for " + self.name + " is already set"
         self.phi = flow
 
     def set_left_order(self, left_order):
-        assert self.left_order == 0, "left_order for " + self.name + " is already set"
+        assert self.left_order is None, "left_order for " + self.name + " is already set"
         self.left_order = left_order
 
     def set_right_order(self, right_order):
-        assert self.right_order == 0, "right_order for " + self.name + " is already set"
+        assert self.right_order is None, "right_order for " + self.name + " is already set"
         self.right_order = right_order
 
     def set_left_v(self, left_v):
-        assert self.left_v == 0, "left_v for " + self.name + " is already set"
+        assert self.left_v is None, "left_v for " + self.name + " is already set"
         self.left_v = left_v
 
     def set_right_v(self, right_v):
-        assert self.right_v == 0, "right_v for " + self.name + " is already set"
+        assert self.right_v is None, "right_v for " + self.name + " is already set"
         self.right_v = right_v

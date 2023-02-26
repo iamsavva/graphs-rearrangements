@@ -13,8 +13,9 @@ from axis_aligned_set_tesselation import (
     AxisAlignedSetTessellation,
     make_a_test_with_obstacles,
     make_swap_two_test,
-    make_a_test_with_objects_and_obstacles
+    make_a_test_with_objects_and_obstacles,
 )
+
 
 class GraphOfAdjacentAlignedSets:
     def __init__(self, tessellation: AxisAlignedSetTessellation):
