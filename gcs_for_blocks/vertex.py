@@ -3,7 +3,7 @@ import typing as T
 import numpy.typing as npt
 
 from axis_aligned_set import AlignedSet
-
+from pydrake.geometry.optimization import HPolyhedron
 
 class Vertex:
     """A simple parent vertex class"""
@@ -44,25 +44,33 @@ class VertexAlignedSet(Vertex):
 
     def get_perspective_hpolyhedron_matrices(self) -> T.Tuple[npt.NDArray, npt.NDArray]:
         return self.aligned_set.get_perspective_hpolyhedron_matrices()
+    
+    def get_hpolyhedron(self) -> HPolyhedron:
+        A, b = self.aligned_set.get_hpolyhedron_matrices()
+        return HPolyhedron(A, b)
+
+
 
 
 class VertexTSP(Vertex):
     def __init__(
-        self, name: str, block_position: npt.NDArray, possible_object_index: int
+        self, name: str, block_position: npt.NDArray, block_index:int, possible_object_index: int
     ):
         self.name = name  # type: str
         self.edges_in = []  # type: T.List[str]
         self.edges_out = []  # type: T.List[str]
 
+        self.block_index = block_index # type: int
         self.block_position = block_position  # type: npt.NDArray
         self.possible_object_index = possible_object_index  # type: int
 
 
 class VertexTSPprogram(VertexTSP):
-    def __init__(self, name, block_position, possible_object_index):
+    def __init__(self, name: str, block_position: npt.NDArray, block_index:int, possible_object_index: int):
         self.name = name  # type: str
         self.edges_in = []  # type: T.List[str]
         self.edges_out = []  # type: T.List[str]
+        self.block_index = block_index # type: int
         self.block_position = block_position  # type: npt.NDArray
         self.possible_object_index = possible_object_index
 
@@ -74,7 +82,7 @@ class VertexTSPprogram(VertexTSP):
     @staticmethod
     def from_vertex_tsp(vertex: VertexTSP) -> "VertexTSPprogram":
         return VertexTSPprogram(
-            vertex.name, vertex.block_position, vertex.possible_object_index
+            vertex.name, vertex.block_position, vertex.block_index, vertex.possible_object_index
         )
 
     def set_v(self, v):

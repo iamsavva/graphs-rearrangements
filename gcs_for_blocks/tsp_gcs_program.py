@@ -368,18 +368,25 @@ class GraphTSPGCSProgram:
                 YAY("CONVEX RELAXATION IS TIGHT")
         else:
             YAY("WAS SOLVING INTEGER PROGRAM")
-
+    
+    def get_the_path(self):
+        assert self.solution.is_success()
         flow_vars = [(e, self.solution.GetSolution(e.phi)) for e in self.edges.values()]
         non_zero_edges = [e for (e, flow) in flow_vars if flow > 0.01]
-        # print(self.solution.GetSolution(self.vertices["s1_tsp"].v))
-        # for (e, flow) in flow_vars:
-        #     if 0.01 < flow < 0.99:
-        #         print(e.name, flow)
 
         v_path, e_path = self.find_path_to_target(
             non_zero_edges, self.vertices["start"]
         )
         return v_path, e_path
+    
+    def extract_order(self):
+        v_path, e_path = self.get_the_path()
+        # get tsp variable
+        tsp_vertices = [v for v in v_path if "tsp" in v.name and self.solution.GetSolution(v.order) % 2 ==1 ]
+        block_order = [v.block_index for v in tsp_vertices]
+        for v in tsp_vertices:
+            print(v.name, v.block_index, self.solution.GetSolution(v.v))
+
 
     def get_trajectory_for_drawing(self) -> T.Tuple[npt.NDArray, T.List[str]]:
         """Returns modes and positions for Draw2DSolution class"""
@@ -477,13 +484,13 @@ class GraphTSPGCSProgram:
         graph = GraphTSPGCS()
         # add obejct-related vertices
         for i, obj in enumerate(start_object_locations):
-            graph.add_tsp_vertex(graph.s(i), np.array(obj), i)
+            graph.add_tsp_vertex(graph.s(i), np.array(obj), i, possible_object_index = i)
         for i, obj in enumerate(target_object_locations):
-            graph.add_tsp_vertex(graph.t(i), np.array(obj), i + num_blocks)
+            graph.add_tsp_vertex(graph.t(i), np.array(obj), i, possible_object_index = i + num_blocks)
 
         # add arm start/target TSP vertices
-        graph.add_tsp_vertex("start", np.array(start_arm_position), -1)
-        graph.add_tsp_vertex("target", np.array(target_arm_position), -1)
+        graph.add_tsp_vertex("start", np.array(start_arm_position), -1, -1)
+        graph.add_tsp_vertex("target", np.array(target_arm_position), -1, -1)
 
         # add TSP edges
         for i in range(num_blocks):
@@ -499,8 +506,9 @@ class GraphTSPGCSProgram:
                     graph.add_tsp_edge(graph.t(i), graph.s(j))
 
         return GraphTSPGCSProgram(graph, tessellation_graph, initial_object_index_state, target_object_index_state, program_options)
+    
 
-if __name__ == "__main__":
+def make_a_small_test():
     program_options = ProgramOptionsForGCSTSP()
     program_options.add_L2_norm_cost = False
     program_options.add_tsp_edge_costs = True
@@ -519,8 +527,6 @@ if __name__ == "__main__":
     obstacle_sets.append(obstacle_aligned_set(0, 3, 4, 6))  # l r b a
     obstacle_sets.append(obstacle_aligned_set(5, 8, 2, 4))  # l r b a
 
-
-
     graph_prog = GraphTSPGCSProgram.construct_from_positions(
         bounding_box,
         obstacle_sets,
@@ -530,8 +536,10 @@ if __name__ == "__main__":
         target_arm_position,
         program_options)
 
-    v_path, e_path = graph_prog.solve()
-    for v in v_path:
-        print(v.name)
+    graph_prog.solve()
+    graph_prog.extract_order()
 
-    graph_prog.tessellation_graph.plot_the_tessellation_graph()
+
+if __name__ == "__main__":
+    make_a_small_test()
+

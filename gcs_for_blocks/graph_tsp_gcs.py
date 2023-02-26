@@ -40,11 +40,11 @@ class GraphTSPGCS:
         return "t" + str(name) + "_tsp"
 
     def add_tsp_vertex(
-        self, name: str, block_position: npt.NDArray, block_index: int
+        self, name: str, block_position: npt.NDArray, block_index: int, possible_object_index:int,
     ) -> None:
         """Add TSP vertex to the dictionary"""
         assert name not in self.vertices, "Vertex with name " + name + " already exists"
-        self.vertices[name] = VertexTSP(name, block_position, block_index)
+        self.vertices[name] = VertexTSP(name, block_position, block_index, possible_object_index)
 
     def add_tsp_edge(self, left_name: str, right_name: str):
         edge_name = left_name + "_" + right_name
