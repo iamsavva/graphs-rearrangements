@@ -15,7 +15,7 @@ from util import timeit, INFO, YAY, WARN, ERROR
 from vertex import Vertex, VertexTSPprogram, VertexAlignedSet, VertexTSP
 from edge import Edge, EdgeMotionPlanningProgam
 from graph_tsp_gcs import ProgramOptionsForGCSTSP
-from axis_aligned_set import AlignedSet, Box, FREE
+from axis_aligned_set import AlignedSet, Box, FREE, OBSTACLE
 from axis_aligned_set_tesselation import (
     AxisAlignedSetTessellation,
     make_a_test_with_objects_and_obstacles,
@@ -136,7 +136,6 @@ class DescentOverPermutahedron:
         num_iterations = 0
         # continue while there are promising swaps
         while sum(promising_swaps) > 0:
-            print()
             num_iterations += 1
             improving_swaps = []
             
@@ -230,9 +229,9 @@ class DescentOverPermutahedron:
         INFO("Number of iterations: ", num_iterations)
         INFO("Number of GCS solves: ", self.num_gcs_solves)
         WARN("Original order: ", feasible_order)
-        YAY("New order: ", current_order)
-        WARN("Cost of original order", original_order_cost)
-        YAY("Cost of new order: ", new_order_cost )
+        YAY("New order:      ", current_order)
+        WARN("Cost of original order: ", original_order_cost)
+        YAY("Cost of new order:      ", new_order_cost )
         YAY("-----------")
         YAY("Cost improvement: ", original_order_cost - new_order_cost)
         return current_order
@@ -240,15 +239,14 @@ class DescentOverPermutahedron:
 
         
     def solve_for_path_from_to(self, object_index: int, order:npt.NDArray):
-        prog = self.master_gcs_program.copy()
         self.num_gcs_solves += 1
-        
-        prog.ClearAllPhiConstraints()
+
+        self.master_gcs_program.ClearAllPhiConstraints()
         # don't allow going through the following objects
-        offset = 0
+        offset = self.num_objects
         for i in range(self.num_objects):
             if order[i] == object_index:
-                offset = self.num_objects
+                offset = 0
             else:
                 for edge in self.possible_block_to_edge_list[ order[i] + offset ]:
                     edge.AddPhiConstraint(False)
@@ -385,10 +383,10 @@ def simple_small_test():
     prog = DescentOverPermutahedron(num_objects, arm_start, arm_target, start_locs, target_locs, tess_graph)
     prog.solve_from_feasible_solution( [1, 0] )
 
-if __name__ == "__main__":
+def simple_random_test():
+    # observation: LP also fails a lot faster than an SOCP
 
     lb, ub = 0,30
-
     bounding_box = AlignedSet(a=ub, b = lb, l = lb, r = ub, set_type = FREE )
     obstacle_sets = []
 
@@ -414,7 +412,102 @@ if __name__ == "__main__":
     feasible_order = full_prog.extract_order()
     print(feasible_order)
 
+    descent_prog = DescentOverPermutahedron(n, start_arm_position, target_arm_position, start_object_locations, target_object_locations, full_prog.tessellation_graph)
+    descent_prog.solve_from_feasible_solution(feasible_order)
 
-    # descent_prog = DescentOverPermutahedron(n, start_arm_position, target_arm_position, start_object_locations, target_object_locations, full_prog.tessellation_graph)
-    # descent_prog.solve_from_feasible_solution(feasible_order)
-        
+
+def move_9_boxes_up_test():
+
+    lb, ub = 0, 16
+    bounding_box = AlignedSet(a=ub, b = lb, l = lb, r = ub, set_type = FREE )
+    
+    obstacle_sets = [ AlignedSet(l = 6, r = 10, b = 6, a = 10, set_type=OBSTACLE)]
+
+    n = 9
+    start_object_locations = [ (1,1), (1,3), (1,5),
+                               (3,1), (3,3), (3,5),
+                               (5,1), (5,3), (5,5),]
+    
+    target_object_locations = [(11,15), (13,13), (11,11),
+                               (11,13), (13,11), (15,15),
+                               (15,13), (13,15), (15,11), ]
+    
+    # just an offset:
+    # target_object_locations = [ (loc[0]+ 12, loc[1]+12) for loc in start_object_locations]
+
+    start_arm_position = np.array([10,10])
+    target_arm_position = np.array([10,10])
+
+    program_options = ProgramOptionsForGCSTSP()
+    
+    program_options.add_tsp_edge_costs = True
+    program_options.convex_relaxation_for_gcs_edges = True
+
+    program_options.add_L2_norm_cost = False
+    program_options.solve_for_feasibility = True
+
+    # program_options.add_L2_norm_cost = True
+    # program_options.solve_for_feasibility = False
+
+    x = timeit()
+    full_prog = GraphTSPGCSProgram.construct_from_positions(bounding_box, obstacle_sets, start_object_locations, target_object_locations, start_arm_position, target_arm_position, program_options)
+
+    x.dt("Building the big problem ")
+    full_prog.solve()
+
+    feasible_order = full_prog.extract_order()
+    print(feasible_order)
+
+    descent_prog = DescentOverPermutahedron(n, start_arm_position, target_arm_position, start_object_locations, target_object_locations, full_prog.tessellation_graph)
+
+    # results in local optima
+    # socp_feasible_order = [8, 5, 7, 6, 4, 1, 3, 0, 2] 276
+    # after improvements: = [5, 7, 6, 8, 4, 1, 3, 0, 2] 275
+
+    # lp_feasible_order   = [5, 8, 6, 4, 7, 1, 3, 0, 2] 277
+    # after improvements: = [5, 6, 8, 7, 4, 1, 3, 0, 2] 274
+
+    # there are loads of local minima
+    
+
+    descent_prog.solve_from_feasible_solution(feasible_order)
+    
+
+if __name__ == "__main__":
+    bounding_box = AlignedSet(a=16, b = 0, l = 0, r = 18, set_type = FREE )
+    
+    obstacle_sets = [ AlignedSet(l = 8, r = 10, b = 2, a = 14, set_type=OBSTACLE)]
+
+    n = 8
+    start_object_locations = [ (1,1), (1,3), (1,5), (1,7),
+                               (5,1), (5,3), (5,5), (5,7)]
+    
+    target_object_locations = [ (9,1),  (11,1), (13,1), (15,1), 
+                                (17,1), (17,3), (17,5), (17,7)]
+
+    start_arm_position = np.array([0,0])
+    target_arm_position = np.array([0,0])
+
+    program_options = ProgramOptionsForGCSTSP()
+    
+    program_options.add_tsp_edge_costs = True
+    program_options.convex_relaxation_for_gcs_edges = True
+
+    program_options.add_L2_norm_cost = False
+    program_options.solve_for_feasibility = True
+
+    program_options.add_L2_norm_cost = True
+    program_options.solve_for_feasibility = False
+
+    x = timeit()
+    full_prog = GraphTSPGCSProgram.construct_from_positions(bounding_box, obstacle_sets, start_object_locations, target_object_locations, start_arm_position, target_arm_position, program_options)
+
+    x.dt("Building the big problem ")
+    full_prog.solve()
+
+    feasible_order = full_prog.extract_order()
+    print(feasible_order)
+
+    descent_prog = DescentOverPermutahedron(n, start_arm_position, target_arm_position, start_object_locations, target_object_locations, full_prog.tessellation_graph)
+
+    descent_prog.solve_from_feasible_solution(feasible_order)

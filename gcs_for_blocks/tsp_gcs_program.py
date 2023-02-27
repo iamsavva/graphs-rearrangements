@@ -318,15 +318,16 @@ class GraphTSPGCSProgram:
         """
         TSP costs are constants: pay a fixed price for going from target of last to start of next.
         """
-        self.prog.AddLinearCost(
-            sum(
-                [
-                    e.phi * e.cost
-                    for e in self.edges.values()
-                    if type(e) == EdgeTSPprogram
-                ]
+        if self.program_options.add_tsp_edge_costs:
+            self.prog.AddLinearCost(
+                sum(
+                    [
+                        e.phi * e.cost
+                        for e in self.edges.values()
+                        if type(e) == EdgeTSPprogram
+                    ]
+                )
             )
-        )
 
     # TODO
     # this should be called "add gcs edge"
@@ -483,10 +484,13 @@ class GraphTSPGCSProgram:
         object_sets = start_object_aligned_sets + target_object_aligned_sets
 
         # make the tessellation
+        x = timeit()
         tessellation = AxisAlignedSetTessellation(bounding_box, obstacle_sets, object_sets)
+        x.dt("Building the tessellation ")
 
         # make the graph 
         tessellation_graph = GraphOfAdjacentAlignedSets(tessellation)
+        x.dt( "Building the tessellation graph ")
 
         # construct a tsp-gcs graph
         graph = GraphTSPGCS()
@@ -513,7 +517,10 @@ class GraphTSPGCSProgram:
                 if i != j:
                     graph.add_tsp_edge(graph.t(i), graph.s(j))
 
-        return GraphTSPGCSProgram(graph, tessellation_graph, initial_object_index_state, target_object_index_state, program_options)
+        x.dt( "Building the gcs-tsp graph ")
+        prog_graph = GraphTSPGCSProgram(graph, tessellation_graph, initial_object_index_state, target_object_index_state, program_options)
+        x.dt( "Building the program graph ")
+        return prog_graph
     
 
 def make_a_small_test():

@@ -84,6 +84,7 @@ class GraphOfAdjacentAlignedSets:
                     zorder=120,
                 )
             )
+        plt.grid(zorder=150)
         plt.show()
 
 

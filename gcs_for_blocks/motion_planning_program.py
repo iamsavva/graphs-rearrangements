@@ -322,6 +322,7 @@ class MotionPlanningProgram:
             for e in self.edges.values():
                 left_not_tsp_vertex = e.left.name != self.start_tsp_vertex_name
                 right_not_tsp_vertex = e.right.name != self.target_tsp_vertex_name
+                # left is not TSP and right is not TSP -- it must be an inner-graph vertex
                 if left_not_tsp_vertex and right_not_tsp_vertex:
                     # ||r_pos - l_pos||_2
 
@@ -332,15 +333,23 @@ class MotionPlanningProgram:
                         A, b, np.append(e.l_pos, e.r_pos)
                     )
                 
-                if e.left.name == self.mp_name(self.start_tessellation_vertex_name) and "tsp" not in e.right.name:
-                    A = np.array([[1, 0], [0, 1]])
-                    b = -self.start_position
-                    self.prog.AddL2NormCostUsingConicConstraint(A, b, e.l_pos)
-                
-                if e.right.name == self.mp_name(self.target_tessellation_vertex_name) and "tsp" not in e.left.name:
-                    A = np.array([[1, 0], [0, 1]])
-                    b = -self.target_position
-                    self.prog.AddL2NormCostUsingConicConstraint(A, b, e.r_pos)
+            # cost on start_position to first-set position
+            left_start_position = np.array([ self.edges[e].l_pos for e in self.vertices[self.mp_name(self.start_tessellation_vertex_name)].edges_out
+                                 if self.edges[e].l_pos is not None ]).flatten()
+            
+            A = np.tile(np.eye(2), round(len(left_start_position)/2) )
+            b = -self.start_position
+            self.prog.AddL2NormCostUsingConicConstraint(A, b, left_start_position)
+
+            # cost on target_position to last-set position
+            right_start_position = np.array([ self.edges[e].r_pos for e in self.vertices[self.mp_name(self.target_tessellation_vertex_name)].edges_in
+                            if self.edges[e].r_pos is not None
+                        ]
+                    ).flatten()
+            A = np.tile(np.eye(2), round(len(right_start_position)/2) )
+            b = -self.target_position
+            self.prog.AddL2NormCostUsingConicConstraint(A, b, right_start_position)
+
 
 
 def test():

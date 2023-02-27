@@ -122,7 +122,7 @@ class AlignedSet:
             self.r - self.l,
             self.a - self.b,
             linewidth=2,
-            edgecolor=color,
+            edgecolor="black",
             facecolor=color,
             zorder = zorder,
             # label=self.name, # TODO: put list of objects instead
